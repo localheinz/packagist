@@ -1,0 +1,81 @@
+# https://docs.github.com/en/actions
+
+name: "Integrate"
+
+on:
+  pull_request: null
+  push:
+    branches:
+      - "master"
+
+jobs:
+  tests:
+    name: "Tests"
+
+    runs-on: "ubuntu-latest"
+
+    services:
+      mysql:
+        image: "mysql:5.7"
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: false
+          MYSQL_DATABASE: "packagist_test"
+          MYSQL_ROOT_PASSWORD: "packagist"
+        ports:
+          - "3306/tcp"
+        options: "--health-cmd=\"mysqladmin ping\" --health-interval=10s --health-timeout=5s --health-retries=3"
+
+      redis:
+        image: "redis"
+        ports:
+          - "6379/tcp"
+        options: "--health-cmd=\"redis-cli ping\" --health-interval=10s --health-timeout=5s --health-retries=3"
+
+    strategy:
+      matrix:
+        php-version:
+          - "7.3"
+
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v2"
+
+      - name: "Install PHP"
+        uses: "shivammathur/setup-php@v2"
+        with:
+          coverage: "none"
+          php-version: "${{ matrix.php-version }}"
+
+      - name: "Start mysql service"
+        run: "sudo /etc/init.d/mysql start"
+
+      - name: "Determine composer cache directory"
+        id: "determine-composer-cache-directory"
+        run: "echo \"::set-output name=directory::$(composer config cache-dir)\""
+
+      - name: "Cache dependencies installed with composer"
+        uses: "actions/cache@v2"
+        with:
+          path: "${{ steps.determine-composer-cache-directory.outputs.directory }}"
+          key: "php-${{ matrix.php-version }}-composer-${{ hashFiles('composer.lock') }}"
+          restore-keys: "php-${{ matrix.php-version }}-composer-"
+
+      - name: "Prepare application configuration"
+        run: |
+          cp app/config/parameters.yml.dist app/config/parameters.yml
+          echo "    database_host: 127.0.0.1" >> app/config/parameters.yml
+          echo "    database_password: packagist" >> app/config/parameters.yml
+          echo "    github.client_id: ${{ secrets.GH_CLIENT_ID }}" >> app/config/parameters.yml
+          echo "    github.client_secret: ${{ secrets.GH_CLIENT_SECRET }}" >> app/config/parameters.yml
+
+      - name: "Install dependencies with composer"
+        run: "composer install --no-interaction --no-progress --no-suggest"
+
+      - name: "Prepare test database"
+        run: |
+          app/console doctrine:database:create --env=test -n
+          app/console doctrine:schema:create --env=test -n
+
+      - name: "Run tests with phpunit/phpunit"
+        run: "vendor/bin/phpunit"
+

@@ -1,6 +1,8 @@
 Packagist
 =========
 
+[![Integrate](https://github.com/composer/packagist/workflows/Integrate/badge.svg?branch=main)](https://github.com/composer/packagist/actions)
+
 Package Repository Website for Composer, see the [about page](https://packagist.org/about) on [packagist.org](https://packagist.org/) for more.
 
 **This project is not meant for re-use.**
